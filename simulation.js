@@ -1,5 +1,5 @@
 var Camera = function () {
-    var azimuth = INITIAL_AZIMUTH,
+    let azimuth = INITIAL_AZIMUTH,
         elevation = INITIAL_ELEVATION,
 
         viewMatrix = makeIdentityMatrix(new Float32Array(16)),
@@ -370,58 +370,62 @@ var OCEAN_FRAGMENT_SOURCE = `
 `
 
 var Simulator = function (canvas, width, height) {
+    // init canvas
     var canvas = canvas;
     canvas.width = width;
     canvas.height = height;
 
     var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
 
+    // start positions
     var windX = INITIAL_WIND[0],
         windY = INITIAL_WIND[1],
         size = INITIAL_SIZE,
         choppiness = INITIAL_CHOPPINESS;
-
     var changed = true;
 
+    // GL extensions
     gl.getExtension('OES_texture_float');
     gl.getExtension('OES_texture_float_linear');
 
+    // blank the canvas
     gl.clearColor.apply(gl, CLEAR_COLOR);
     gl.enable(gl.DEPTH_TEST);
 
     var fullscreenVertexShader = buildShader(gl, gl.VERTEX_SHADER, FULLSCREEN_VERTEX_SOURCE);
 
-    var horizontalSubtransformProgram = buildProgramWrapper(gl, fullscreenVertexShader, 
+    // post processing shaders?
+    var pp_horizontalSubtransformProgram = buildProgramWrapper(gl, fullscreenVertexShader,
         buildShader(gl, gl.FRAGMENT_SHADER, '#define HORIZONTAL \n' + SUBTRANSFORM_FRAGMENT_SOURCE), {'a_position': 0});
-    gl.useProgram(horizontalSubtransformProgram.program);
-    gl.uniform1f(horizontalSubtransformProgram.uniformLocations['u_transformSize'], RESOLUTION);
+    gl.useProgram(pp_horizontalSubtransformProgram.program);
+    gl.uniform1f(pp_horizontalSubtransformProgram.uniformLocations['u_transformSize'], RESOLUTION);
 
-    var verticalSubtransformProgram = buildProgramWrapper(gl, fullscreenVertexShader, 
+    var pp_verticalSubtransformProgram = buildProgramWrapper(gl, fullscreenVertexShader,
         buildShader(gl, gl.FRAGMENT_SHADER, SUBTRANSFORM_FRAGMENT_SOURCE), {'a_position': 0});
-    gl.useProgram(verticalSubtransformProgram.program);
-    gl.uniform1f(verticalSubtransformProgram.uniformLocations['u_transformSize'], RESOLUTION);
+    gl.useProgram(pp_verticalSubtransformProgram.program);
+    gl.uniform1f(pp_verticalSubtransformProgram.uniformLocations['u_transformSize'], RESOLUTION);
     
-    var initialSpectrumProgram = buildProgramWrapper(gl, fullscreenVertexShader, 
+    var pp_initialSpectrumProgram = buildProgramWrapper(gl, fullscreenVertexShader,
         buildShader(gl, gl.FRAGMENT_SHADER, INITIAL_SPECTRUM_FRAGMENT_SOURCE), {'a_position': 0});
-    gl.useProgram(initialSpectrumProgram.program);
-    gl.uniform1f(initialSpectrumProgram.uniformLocations['u_resolution'], RESOLUTION);
+    gl.useProgram(pp_initialSpectrumProgram.program);
+    gl.uniform1f(pp_initialSpectrumProgram.uniformLocations['u_resolution'], RESOLUTION);
 
-    var phaseProgram = buildProgramWrapper(gl, fullscreenVertexShader, 
+    var pp_phaseProgram = buildProgramWrapper(gl, fullscreenVertexShader,
         buildShader(gl, gl.FRAGMENT_SHADER, PHASE_FRAGMENT_SOURCE), {'a_position': 0});
-    gl.useProgram(phaseProgram.program);
-    gl.uniform1f(phaseProgram.uniformLocations['u_resolution'], RESOLUTION);
+    gl.useProgram(pp_phaseProgram.program);
+    gl.uniform1f(pp_phaseProgram.uniformLocations['u_resolution'], RESOLUTION);
 
-    var spectrumProgram = buildProgramWrapper(gl, fullscreenVertexShader, 
+    var pp_spectrumProgram = buildProgramWrapper(gl, fullscreenVertexShader,
         buildShader(gl, gl.FRAGMENT_SHADER, SPECTRUM_FRAGMENT_SOURCE), {'a_position': 0});
-    gl.useProgram(spectrumProgram.program);
-    gl.uniform1i(spectrumProgram.uniformLocations['u_initialSpectrum'], INITIAL_SPECTRUM_UNIT);
-    gl.uniform1f(spectrumProgram.uniformLocations['u_resolution'], RESOLUTION);
+    gl.useProgram(pp_spectrumProgram.program);
+    gl.uniform1i(pp_spectrumProgram.uniformLocations['u_initialSpectrum'], INITIAL_SPECTRUM_UNIT);
+    gl.uniform1f(pp_spectrumProgram.uniformLocations['u_resolution'], RESOLUTION);
 
-    var normalMapProgram = buildProgramWrapper(gl, fullscreenVertexShader, 
+    var pp_normalMapProgram = buildProgramWrapper(gl, fullscreenVertexShader,
         buildShader(gl, gl.FRAGMENT_SHADER, NORMAL_MAP_FRAGMENT_SOURCE), {'a_position': 0});
-    gl.useProgram(normalMapProgram.program);
-    gl.uniform1i(normalMapProgram.uniformLocations['u_displacementMap'], DISPLACEMENT_MAP_UNIT);
-    gl.uniform1f(normalMapProgram.uniformLocations['u_resolution'], RESOLUTION);
+    gl.useProgram(pp_normalMapProgram.program);
+    gl.uniform1i(pp_normalMapProgram.uniformLocations['u_displacementMap'], DISPLACEMENT_MAP_UNIT);
+    gl.uniform1f(pp_normalMapProgram.uniformLocations['u_resolution'], RESOLUTION);
 
     var oceanProgram = buildProgramWrapper(gl,
         buildShader(gl, gl.VERTEX_SHADER, OCEAN_VERTEX_SOURCE),
@@ -512,27 +516,27 @@ var Simulator = function (canvas, width, height) {
         pingTransformFramebuffer = buildFramebuffer(gl, pingTransformTexture),
         pongTransformFramebuffer = buildFramebuffer(gl, pongTransformTexture);
 
+    // handle changes
     this.setWind = function (x, y) {
         windX = x;
         windY = y;
         changed = true;
     };
-
     this.setSize = function (newSize) {
         size = newSize;
         changed = true;
     };
-
     this.setChoppiness = function (newChoppiness) {
         choppiness = newChoppiness;
     };
-
     this.resize = function (width, height) {
         canvas.width = width;
         canvas.height = height;
     };
 
+    // render loop
     this.render = function (deltaTime, projectionMatrix, viewMatrix, cameraPosition) {
+        // console.dir({ cameraPosition })
         gl.viewport(0, 0, RESOLUTION, RESOLUTION);
         gl.disable(gl.DEPTH_TEST);
 
@@ -541,32 +545,34 @@ var Simulator = function (canvas, width, height) {
 
         if (changed) {
             gl.bindFramebuffer(gl.FRAMEBUFFER, initialSpectrumFramebuffer);
-            gl.useProgram(initialSpectrumProgram.program);
-            gl.uniform2f(initialSpectrumProgram.uniformLocations['u_wind'], windX, windY);
-            gl.uniform1f(initialSpectrumProgram.uniformLocations['u_size'], size);
+            gl.useProgram(pp_initialSpectrumProgram.program);
+            gl.uniform2f(pp_initialSpectrumProgram.uniformLocations['u_wind'], windX, windY);
+            gl.uniform1f(pp_initialSpectrumProgram.uniformLocations['u_size'], size);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         }
         
         //store phases separately to ensure continuity of waves during parameter editing
-        gl.useProgram(phaseProgram.program);
+        // DZ: phases control the change over time of the waves
+        gl.useProgram(pp_phaseProgram.program);
         gl.bindFramebuffer(gl.FRAMEBUFFER, pingPhase ? pongPhaseFramebuffer : pingPhaseFramebuffer);
-        gl.uniform1i(phaseProgram.uniformLocations['u_phases'], pingPhase ? PING_PHASE_UNIT : PONG_PHASE_UNIT);
+        gl.uniform1i(pp_phaseProgram.uniformLocations['u_phases'], pingPhase ? PING_PHASE_UNIT : PONG_PHASE_UNIT);
         pingPhase = !pingPhase;
-        gl.uniform1f(phaseProgram.uniformLocations['u_deltaTime'], deltaTime);
-        gl.uniform1f(phaseProgram.uniformLocations['u_size'], size);
+        gl.uniform1f(pp_phaseProgram.uniformLocations['u_deltaTime'], deltaTime);
+        gl.uniform1f(pp_phaseProgram.uniformLocations['u_size'], size);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-        gl.useProgram(spectrumProgram.program);
+        gl.useProgram(pp_spectrumProgram.program);
         gl.bindFramebuffer(gl.FRAMEBUFFER, spectrumFramebuffer);
-        gl.uniform1i(spectrumProgram.uniformLocations['u_phases'], pingPhase ? PING_PHASE_UNIT : PONG_PHASE_UNIT);
-        gl.uniform1f(spectrumProgram.uniformLocations['u_size'], size);
-        gl.uniform1f(spectrumProgram.uniformLocations['u_choppiness'], choppiness);
+        gl.uniform1i(pp_spectrumProgram.uniformLocations['u_phases'], pingPhase ? PING_PHASE_UNIT : PONG_PHASE_UNIT);
+        gl.uniform1f(pp_spectrumProgram.uniformLocations['u_size'], size);
+        gl.uniform1f(pp_spectrumProgram.uniformLocations['u_choppiness'], choppiness);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-        var subtransformProgram = horizontalSubtransformProgram;
-        gl.useProgram(horizontalSubtransformProgram.program);
+        var subtransformProgram = pp_horizontalSubtransformProgram;
+        gl.useProgram(pp_horizontalSubtransformProgram.program);
 
         //GPU FFT using Stockham formulation
+        // DZ: computes the actual vertex heights
         var iterations = log2(RESOLUTION) * 2;
         for (var i = 0; i < iterations; i += 1) {
             if (i === 0) {
@@ -584,21 +590,23 @@ var Simulator = function (canvas, width, height) {
             }
 
             if (i === iterations / 2) {
-                subtransformProgram = verticalSubtransformProgram;
-                gl.useProgram(verticalSubtransformProgram.program);
+                subtransformProgram = pp_verticalSubtransformProgram;
+                gl.useProgram(pp_verticalSubtransformProgram.program);
             }
 
             gl.uniform1f(subtransformProgram.uniformLocations['u_subtransformSize'], Math.pow(2,(i % (iterations / 2)) + 1));
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         }
 
+        // DZ: compute normals; used for proper color and lighting
         gl.bindFramebuffer(gl.FRAMEBUFFER, normalMapFramebuffer);
-        gl.useProgram(normalMapProgram.program);
+        gl.useProgram(pp_normalMapProgram.program);
         if (changed) {
-            gl.uniform1f(normalMapProgram.uniformLocations['u_size'], size);
+            gl.uniform1f(pp_normalMapProgram.uniformLocations['u_size'], size);
         }
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
+        // DZ: render the ocean
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.viewport(0, 0, canvas.width, canvas.height);
         gl.enable(gl.DEPTH_TEST);
